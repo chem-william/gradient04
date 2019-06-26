@@ -34,53 +34,66 @@ fn convert(phi: Vec<Vec<Vec<Vec<f64>>>>) -> Array4<f64> {
     init.unwrap()
 }
 
-#[pyfunction]
-fn jc_current(
-    phi: Vec<Vec<Vec<Vec<f64>>>>,
-    mlt: Vec<Vec<f64>>,
-    dx: f64,
-    dy: f64,
-    dz: f64,
-    bf_list: usize,
-) -> PyResult<(Vec<f64>)> {
-    // flatten the received arrays
-    let phi = convert(phi);
-    let mlt = mlt.concat();
+#[pyclass]
+struct Gradient {}
 
-    let mut jx = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
-    let mut jy = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
-    let mut jz = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
-
-    let mut total_idx: usize = 0;
-
-    let mut temp = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
-    
-    // temp = phi.axis_iter()
-    //     .fold(Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3)), |acc, x| {
-            
-    //     })
-
-
-    let pb = ProgressBar::new(bf_list as u64);
-    for i_orb in pb.wrap_iter(0..bf_list) {
-        for j_orb in 0..bf_list {
-            let psi = phi.slice(s![i_orb, .., .., ..]);
-            let phi = phi.slice(s![j_orb, .., .., ..]);
-
-            let result = gradient04(&phi, &[dx, dy, dz]);
-
-            jx = jx + 2.0 * &mlt[total_idx] * &result[0] * &psi;
-            jy = jy + 2.0 * &mlt[total_idx] * &result[1] * &psi;
-            jz = jz + 2.0 * &mlt[total_idx] * &result[2] * &psi;
-
-            total_idx += 1;
-        }
+#[pymethods]
+impl Gradient {
+    #[new]
+    fn new(obj: &PyRawObject) {
+        obj.init(Gradient {});
     }
-    let dA: f64 = dx * dy;
-    let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * dA;
-    let current = current.to_vec();
 
-    Ok(current)
+    fn jc_current(
+        &self,
+        py: Python<'_>,
+        phi: Vec<Vec<Vec<Vec<f64>>>>,
+        mlt: Vec<Vec<f64>>,
+        dx: f64,
+        dy: f64,
+        dz: f64,
+        bf_list: usize,
+    ) -> PyResult<(Vec<f64>)> {
+        // flatten the received arrays
+        let phi = convert(phi);
+        let mlt = mlt.concat();
+
+        let mut jx = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
+        let mut jy = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
+        let mut jz = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
+
+        let mut total_idx: usize = 0;
+
+        let mut temp = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
+        
+        // temp = phi.axis_iter()
+        //     .fold(Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3)), |acc, x| {
+                
+        //     })
+
+
+        let pb = ProgressBar::new(bf_list as u64);
+        for i_orb in pb.wrap_iter(0..bf_list) {
+            for j_orb in 0..bf_list {
+                let psi = phi.slice(s![i_orb, .., .., ..]);
+                let phi = phi.slice(s![j_orb, .., .., ..]);
+
+                let result = py.allow_threads(move || {
+                    gradient04(&phi, &[dx, dy, dz])
+                });
+                jx = jx + 2.0 * &mlt[total_idx] * &result[0] * &psi;
+                jy = jy + 2.0 * &mlt[total_idx] * &result[1] * &psi;
+                jz = jz + 2.0 * &mlt[total_idx] * &result[2] * &psi;
+
+                total_idx += 1;
+            }
+        }
+        let dA: f64 = dx * dy;
+        let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * dA;
+        let current = current.to_vec();
+
+        Ok(current)
+    }
 }
 
 fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
@@ -160,8 +173,9 @@ fn get_info(s: &str) {
 
 #[pymodule]
 fn libgradient(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(get_info)).unwrap();
-    m.add_wrapped(wrap_pyfunction!(jc_current)).unwrap();
+    m.add_wrapped(wrap_pyfunction!(get_info))?;
+    // m.add_wrapped(wrap_pyfunction!(jc_current))?;
+    m.add_class::<Gradient>()?;
 
     Ok(())
 }
