@@ -11,6 +11,8 @@ use indicatif::ProgressBar;
 
 use rayon::prelude::*;
 
+use std::thread;
+
 use ndarray::prelude::*;
 
 use ndarray::Zip;
@@ -50,6 +52,14 @@ fn jc_current(
     let mut jz = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
 
     let mut total_idx: usize = 0;
+
+    let mut temp = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
+    
+    // temp = phi.axis_iter()
+    //     .fold(Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3)), |acc, x| {
+            
+    //     })
+
 
     let pb = ProgressBar::new(bf_list as u64);
     for i_orb in pb.wrap_iter(0..bf_list) {
@@ -109,15 +119,6 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
                 *out = (val1 - 8.0 * val2 + 8.0 * val3 - val4) / 12.0;
             });
 
-        // for (out, val1, val2, val3, val4) in izip!(
-        //     &mut central_part_result,
-        //     central_part_1,
-        //     central_part_2,
-        //     central_part_3,
-        //     central_part_4) {
-        //         *out = (val1 - 8.0*val2 + 8.0*val3 - val4) / 12.0;
-        //     }
-
         // 1D equivalent -- out[0:2] = (f[1:3] - f[0:2])
         let mut forward_part_result = out.slice_axis_mut(Axis(idx), forward_edge_0);
         let forward_part_1 = &f.slice_axis(Axis(idx), forward_edge_1);
@@ -130,13 +131,6 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
                 *out = val1 - val2;
             });
 
-        // for (out, val1, val2) in izip!(
-        //     &mut forward_part_result,
-        //     forward_part_1,
-        //     forward_part_2) {
-        //         *out = val1 - val2;
-        // }
-
         // // 1D equivalent -- out[-2:] = (f[-2:] - f[-3:-1])
         let mut backward_part_result = out.slice_axis_mut(Axis(idx), backward_edge_0);
         let backward_part_1 = &f.slice_axis(Axis(idx), backward_edge_1);
@@ -148,12 +142,6 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
             .apply(|out, &val1, &val2| {
                 *out = val1 - val2;
             });
-        // for (out, val1, val2) in izip!(
-        //     &mut backward_part_result,
-        //     backward_part_1,
-        //     backward_part_2) {
-        //         *out = val1 - val2;
-        // }
 
         out.par_map_inplace(|x| *x /= step[idx]);
 
