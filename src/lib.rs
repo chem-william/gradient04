@@ -53,7 +53,7 @@ impl Gradient {
         dy: f64,
         dz: f64,
         bf_list: usize,
-    ) -> PyResult<(Vec<f64>)> {
+    ) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>)> {
         // flatten the received arrays
         let phi = convert(phi);
         let mlt = mlt.concat();
@@ -64,23 +64,14 @@ impl Gradient {
 
         let mut total_idx: usize = 0;
 
-        let mut temp = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
-        
-        // temp = phi.axis_iter()
-        //     .fold(Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3)), |acc, x| {
-                
-        //     })
-
-
         let pb = ProgressBar::new(bf_list as u64);
         for i_orb in pb.wrap_iter(0..bf_list) {
             for j_orb in 0..bf_list {
                 let psi = phi.slice(s![i_orb, .., .., ..]);
                 let phi = phi.slice(s![j_orb, .., .., ..]);
 
-                let result = py.allow_threads(move || {
-                    gradient04(&phi, &[dx, dy, dz])
-                });
+                let result = py.allow_threads(move || gradient04(&phi, &[dx, dy, dz]));
+
                 jx = jx + 2.0 * &mlt[total_idx] * &result[0] * &psi;
                 jy = jy + 2.0 * &mlt[total_idx] * &result[1] * &psi;
                 jz = jz + 2.0 * &mlt[total_idx] * &result[2] * &psi;
@@ -92,7 +83,12 @@ impl Gradient {
         let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * dA;
         let current = current.to_vec();
 
-        Ok(current)
+        Ok((
+            current,
+            jx.into_raw_vec(),
+            jy.into_raw_vec(),
+            jz.into_raw_vec(),
+        ))
     }
 }
 
