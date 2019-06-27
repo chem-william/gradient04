@@ -114,8 +114,8 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
 
         // out[2:-2] = (f[:-4] - 8*f[1:-3] + 8*f[3:-1] - f[4:])/12.0
         let mut central_part_result = out.slice_axis_mut(Axis(idx), slice0);
-        let central_part_2 = &f.slice_axis(Axis(idx), slice2);
         let central_part_1 = &f.slice_axis(Axis(idx), slice1);
+        let central_part_2 = &f.slice_axis(Axis(idx), slice2);
         let central_part_3 = &f.slice_axis(Axis(idx), slice3);
         let central_part_4 = &f.slice_axis(Axis(idx), slice4);
 
