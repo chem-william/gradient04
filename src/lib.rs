@@ -72,9 +72,24 @@ impl Gradient {
 
                 let result = py.allow_threads(move || gradient04(&phi, &[dx, dy, dz]));
 
-                jx = jx + 2.0 * &mlt[total_idx] * &result[0] * &psi;
-                jy = jy + 2.0 * &mlt[total_idx] * &result[1] * &psi;
-                jz = jz + 2.0 * &mlt[total_idx] * &result[2] * &psi;
+                Zip::from(&mut jx)
+                    .and(&result[0])
+                    .and(&psi)
+                    .par_apply(|jx, phi, psi| {
+                        *jx += 2.0 * &mlt[total_idx] * phi * psi
+                    });
+                Zip::from(&mut jy)
+                    .and(&result[1])
+                    .and(&psi)
+                    .par_apply(|jy, phi, psi| {
+                        *jy += 2.0 * &mlt[total_idx] * phi * psi
+                    });
+                Zip::from(&mut jz)
+                    .and(&result[2])
+                    .and(&psi)
+                    .par_apply(|jz, phi, psi| {
+                        *jz += 2.0 * &mlt[total_idx] * phi * psi
+                    });
 
                 total_idx += 1;
             }
