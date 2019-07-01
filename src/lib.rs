@@ -9,10 +9,6 @@ use pyo3::wrap_pyfunction;
 
 use indicatif::ProgressBar;
 
-use rayon::prelude::*;
-
-use std::thread;
-
 use ndarray::prelude::*;
 
 use ndarray::Zip;
@@ -52,10 +48,10 @@ impl Gradient {
         dx: f64,
         dy: f64,
         dz: f64,
-        bf_list: usize,
     ) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>)> {
         // flatten the received arrays
         let phi = convert(phi);
+        let bf_list = mlt[0].len();
         let mlt = mlt.concat();
 
         let mut jx = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
@@ -75,31 +71,26 @@ impl Gradient {
                 Zip::from(&mut jx)
                     .and(&result[0])
                     .and(&psi)
-                    .par_apply(|jx, phi, psi| {
-                        *jx += 2.0 * &mlt[total_idx] * phi * psi
-                    });
+                    .par_apply(|jx, phi, psi| *jx += 2.0 * &mlt[total_idx] * psi * phi);
+
                 Zip::from(&mut jy)
                     .and(&result[1])
                     .and(&psi)
-                    .par_apply(|jy, phi, psi| {
-                        *jy += 2.0 * &mlt[total_idx] * phi * psi
-                    });
+                    .par_apply(|jy, phi, psi| *jy += 2.0 * &mlt[total_idx] * psi * phi);
+
                 Zip::from(&mut jz)
                     .and(&result[2])
                     .and(&psi)
-                    .par_apply(|jz, phi, psi| {
-                        *jz += 2.0 * &mlt[total_idx] * phi * psi
-                    });
+                    .par_apply(|jz, phi, psi| *jz += 2.0 * &mlt[total_idx] * psi * phi);
 
                 total_idx += 1;
             }
         }
-        let dA: f64 = dx * dy;
-        let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * dA;
-        let current = current.to_vec();
+        let d_a: f64 = dx * dy;
+        let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * d_a;
 
         Ok((
-            current,
+            current.to_vec(),
             jx.into_raw_vec(),
             jy.into_raw_vec(),
             jz.into_raw_vec(),
@@ -107,7 +98,7 @@ impl Gradient {
     }
 }
 
-fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
+fn gradient04(f: &ArrayView3<f64>, steps: &[f64; 3]) -> Vec<Array3<f64>> {
     let slice0 = ndarray::Slice::from(2..-2);
     let slice1 = ndarray::Slice::from(..-4);
     let slice2 = ndarray::Slice::from(1..-3);
@@ -124,7 +115,7 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
 
     let mut result = Vec::with_capacity(3);
 
-    for idx in 0..3 {
+    for (idx, step) in steps.iter().enumerate() {
         let mut out = Array3::<f64>::from_elem(f.dim(), 0.0);
 
         // out[2:-2] = (f[:-4] - 8*f[1:-3] + 8*f[3:-1] - f[4:])/12.0
@@ -167,7 +158,7 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
                 *out = val1 - val2;
             });
 
-        out.par_map_inplace(|x| *x /= step[idx]);
+        out.par_map_inplace(|x| *x /= step);
 
         result.push(out);
     }
@@ -175,12 +166,7 @@ fn gradient04(f: &ArrayView3<f64>, step: &[f64; 3]) -> Vec<Array3<f64>> {
 }
 
 #[pyfunction]
-fn get_info(s: &str) {
-    let vec: Vec<i32> = (0..600000000).collect();
-    let mut arr = Array::from_vec(vec);
-
-    arr.par_map_inplace(|x| *x /= 12);
-}
+fn get_info(_input: Vec<Vec<Vec<Vec<f64>>>>) {}
 
 #[pymodule]
 fn libgradient(_py: Python, m: &PyModule) -> PyResult<()> {
