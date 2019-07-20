@@ -1,25 +1,15 @@
 extern crate ndarray_parallel;
 #[macro_use]
 extern crate ndarray;
-extern crate indicatif;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
-
-use indicatif::ProgressBar;
 
 use ndarray::prelude::*;
 
 use ndarray::Zip;
 use ndarray_parallel::prelude::*;
 
-// TODO: Følgende bid kode skal køres i Python
-/*
-funktionen tager originalt Gles som parameter
-Mlt = 1j*Gles/(¤*np.pi)
-np.save(path + data_basename '"Gles_dV.npy", Mlt)
-
-*/
 fn convert(phi: Vec<Vec<Vec<Vec<f64>>>>) -> Array4<f64> {
     let flattened: Vec<f64> = phi.concat().concat().concat();
     let init = Array4::from_shape_vec(
@@ -59,8 +49,7 @@ impl Gradient {
 
         let mut total_idx: usize = 0;
 
-        let pb = ProgressBar::new(bf_list as u64);
-        for i_orb in pb.wrap_iter(0..bf_list) {
+        for i_orb in 0..bf_list {
             for j_orb in 0..bf_list {
                 let psi = phi.slice(s![i_orb, .., .., ..]);
                 let phi = phi.slice(s![j_orb, .., .., ..]);
