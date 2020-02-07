@@ -1,14 +1,10 @@
-extern crate ndarray_parallel;
-#[macro_use]
 extern crate ndarray;
 
 use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 
 use ndarray::prelude::*;
-
 use ndarray::Zip;
-use ndarray_parallel::prelude::*;
 
 fn convert(phi: Vec<Vec<Vec<Vec<f64>>>>) -> Array4<f64> {
     let flattened: Vec<f64> = phi.concat().concat().concat();
@@ -25,8 +21,8 @@ struct Gradient {}
 #[pymethods]
 impl Gradient {
     #[new]
-    fn new(obj: &PyRawObject) {
-        obj.init(Gradient {});
+    fn new() -> Self {
+        Gradient {}
     }
 
     fn jc_current(

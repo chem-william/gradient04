@@ -12,10 +12,12 @@ name = "gradient"
 crate-type = ["cdylib"]
 
 [dependencies]
-ndarray-parallel = "0.9.0"
-ndarray = "0.12.1"
-indicatif = "0.11.0"
+indicatif = "0.14.0"
+
+[dependencies.ndarray]
+version = "0.13.0"
+features = ["rayon"]
 
 [dependencies.pyo3]
-version = ">=0.7.0"
+version = ">=0.9.0-alpha.1"
 features = ["extension-module"]
