@@ -6,6 +6,10 @@ use pyo3::wrap_pyfunction;
 use ndarray::prelude::*;
 use ndarray::Zip;
 
+use itertools::izip;
+
+use std::time::Instant;
+
 fn convert(phi: Vec<Vec<Vec<Vec<f64>>>>) -> Array4<f64> {
     let flattened: Vec<f64> = phi.concat().concat().concat();
     let init = Array4::from_shape_vec(
@@ -27,7 +31,7 @@ impl Gradient {
 
     fn jc_current(
         &self,
-        py: Python<'_>,
+        _py: Python<'_>,
         phi: Vec<Vec<Vec<Vec<f64>>>>,
         mlt: Vec<Vec<f64>>,
         dx: f64,
@@ -43,33 +47,50 @@ impl Gradient {
         let mut jy = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
         let mut jz = Array3::<f64>::zeros((phi.dim().1, phi.dim().2, phi.dim().3));
 
-        let mut total_idx: usize = 0;
+        let mut grad_x_arr = Vec::with_capacity(bf_list);
+        let mut grad_y_arr = Vec::with_capacity(bf_list);
+        let mut grad_z_arr = Vec::with_capacity(bf_list);
 
         for i_orb in 0..bf_list {
-            for j_orb in 0..bf_list {
-                let psi = phi.slice(s![i_orb, .., .., ..]);
-                let phi = phi.slice(s![j_orb, .., .., ..]);
+            let phi = phi.slice(s![i_orb, .., .., ..]);
+            let grad_phi = gradient04(&phi, &[dx, dy, dz]);
 
-                let result = py.allow_threads(move || gradient04(&phi, &[dx, dy, dz]));
+            grad_x_arr.push(grad_phi[0].to_owned());
+            grad_y_arr.push(grad_phi[1].to_owned());
+            grad_z_arr.push(grad_phi[2].to_owned());
+        }
+
+        let mut total_idx: usize = 0;
+
+
+        // NOTE: mlt is a triangular matrix. Right now we're looping through the whole
+        // MxN matrix, but it can be sped up by first dividing into diagonal and lower matrix
+        // then looping through the lower triangle and doubling its contribution to the current
+        // density. The contribution from the diagonal doesn't need to be doubled.
+        let now = Instant::now();
+        for i_orb in 0..bf_list {
+            for (grad_x, grad_y, grad_z) in izip!(&grad_x_arr, &grad_y_arr, &grad_z_arr) {
+                let psi = phi.slice(s![i_orb, .., .., ..]);
 
                 Zip::from(&mut jx)
-                    .and(&result[0])
                     .and(&psi)
-                    .par_apply(|jx, phi, psi| *jx += 2.0 * &mlt[total_idx] * psi * phi);
+                    .and(grad_x)
+                    .par_apply(|jx, psi, grad_phi| *jx += 2.0 * &mlt[total_idx] * psi * grad_phi);
 
                 Zip::from(&mut jy)
-                    .and(&result[1])
                     .and(&psi)
-                    .par_apply(|jy, phi, psi| *jy += 2.0 * &mlt[total_idx] * psi * phi);
+                    .and(grad_y)
+                    .par_apply(|jy, psi, grad_phi| *jy += 2.0 * &mlt[total_idx] * psi * grad_phi);
 
                 Zip::from(&mut jz)
-                    .and(&result[2])
                     .and(&psi)
-                    .par_apply(|jz, phi, psi| *jz += 2.0 * &mlt[total_idx] * psi * phi);
+                    .and(grad_z)
+                    .par_apply(|jz, psi, grad_phi| *jz += 2.0 * &mlt[total_idx] * psi * grad_phi);
 
                 total_idx += 1;
             }
         }
+        println!("Time for hot loop: {}", now.elapsed().as_millis());
         let d_a: f64 = dx * dy;
         let current = (jz.sum_axis(Axis(0)).sum_axis(Axis(0))) * d_a;
 
