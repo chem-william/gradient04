@@ -1,7 +1,6 @@
 extern crate ndarray;
 
 use pyo3::prelude::*;
-use pyo3::wrap_pyfunction;
 
 use ndarray::prelude::*;
 use ndarray::Zip;
@@ -53,7 +52,7 @@ impl Gradient {
 
         for i_orb in 0..bf_list {
             let phi = phi.slice(s![i_orb, .., .., ..]);
-            let grad_phi = gradient04(&phi, &[dx, dy, dz]);
+            let grad_phi = gradient04(phi, &[dx, dy, dz]);
 
             grad_x_arr.push(grad_phi[0].to_owned());
             grad_y_arr.push(grad_phi[1].to_owned());
@@ -62,11 +61,6 @@ impl Gradient {
 
         let mut total_idx: usize = 0;
 
-
-        // NOTE: mlt is a triangular matrix. Right now we're looping through the whole
-        // MxN matrix, but it can be sped up by first dividing into diagonal and lower matrix
-        // then looping through the lower triangle and doubling its contribution to the current
-        // density. The contribution from the diagonal doesn't need to be doubled.
         let now = Instant::now();
         for i_orb in 0..bf_list {
             for (grad_x, grad_y, grad_z) in izip!(&grad_x_arr, &grad_y_arr, &grad_z_arr) {
@@ -75,17 +69,17 @@ impl Gradient {
                 Zip::from(&mut jx)
                     .and(&psi)
                     .and(grad_x)
-                    .par_apply(|jx, psi, grad_phi| *jx += 2.0 * &mlt[total_idx] * psi * grad_phi);
+                    .par_apply(|jx, psi, grad_phi| *jx += 2.0 * mlt[total_idx] * psi * grad_phi);
 
                 Zip::from(&mut jy)
                     .and(&psi)
                     .and(grad_y)
-                    .par_apply(|jy, psi, grad_phi| *jy += 2.0 * &mlt[total_idx] * psi * grad_phi);
+                    .par_apply(|jy, psi, grad_phi| *jy += 2.0 * mlt[total_idx] * psi * grad_phi);
 
                 Zip::from(&mut jz)
                     .and(&psi)
                     .and(grad_z)
-                    .par_apply(|jz, psi, grad_phi| *jz += 2.0 * &mlt[total_idx] * psi * grad_phi);
+                    .par_apply(|jz, psi, grad_phi| *jz += 2.0 * mlt[total_idx] * psi * grad_phi);
 
                 total_idx += 1;
             }
@@ -103,7 +97,7 @@ impl Gradient {
     }
 }
 
-fn gradient04(f: &ArrayView3<f64>, steps: &[f64; 3]) -> Vec<Array3<f64>> {
+fn gradient04(f: ArrayView3<f64>, steps: &[f64; 3]) -> Vec<Array3<f64>> {
     let slice0 = ndarray::Slice::from(2..-2);
     let slice1 = ndarray::Slice::from(..-4);
     let slice2 = ndarray::Slice::from(1..-3);
@@ -170,12 +164,8 @@ fn gradient04(f: &ArrayView3<f64>, steps: &[f64; 3]) -> Vec<Array3<f64>> {
     result
 }
 
-#[pyfunction]
-fn get_info(_input: Vec<Vec<Vec<Vec<f64>>>>) {}
-
 #[pymodule]
 fn libgradient(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_wrapped(wrap_pyfunction!(get_info))?;
     // m.add_wrapped(wrap_pyfunction!(jc_current))?;
     m.add_class::<Gradient>()?;
 
